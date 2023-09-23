@@ -58,7 +58,7 @@ def calculate_distance(lat1, lon1, lat2, lon2):
     distance = R * c
     return distance
 
-def remove_outliers(data, east_col='E.vel', north_col='N.vel', up_col='U.vel', threshold=0.2):
+def remove_outliers(data, east_col='E.vel', north_col='N.vel', up_col='U.vel'):
     # Calculate the magnitude of the velocity vectors
     magnitudes = np.sqrt(data[east_col] ** 2 + data[north_col] ** 2)
 
@@ -74,17 +74,27 @@ def remove_outliers(data, east_col='E.vel', north_col='N.vel', up_col='U.vel', t
     azimuth_diffs = np.abs(np.arctan2(np.sin(azimuths - median_azimuth), np.cos(azimuths - median_azimuth)))
 
     # Compute the Interquartile Range (IQR) for both magnitude and azimuthal differences
-    iqr_magnitude = np.percentile(magnitude_diffs, 75) - np.percentile(magnitude_diffs, 25)
-    iqr_azimuth = np.percentile(azimuth_diffs, 75) - np.percentile(azimuth_diffs, 25)
+    Q1_magnitude = np.percentile(magnitude_diffs, 25)
+    Q3_magnitude = np.percentile(magnitude_diffs, 75)
+    iqr_magnitude = Q3_magnitude - Q1_magnitude
+
+    Q1_azimuth = np.percentile(azimuth_diffs, 25)
+    Q3_azimuth = np.percentile(azimuth_diffs, 75)
+    iqr_azimuth = Q3_azimuth - Q1_azimuth
 
     # Define the thresholds for outlier detection
-    magnitude_threshold = threshold * iqr_magnitude
-    azimuth_threshold = threshold * iqr_azimuth
+    lower_magnitude_threshold = Q1_magnitude - 1.5 * iqr_magnitude
+    upper_magnitude_threshold = Q3_magnitude + 1.5 * iqr_magnitude
+
+    lower_azimuth_threshold = Q1_azimuth - 1.5 * iqr_azimuth
+    upper_azimuth_threshold = Q3_azimuth + 1.5 * iqr_azimuth
 
     # Find the indices of stations with magnitude or azimuthal differences exceeding the thresholds
     outlier_indices = data.index[
-        (magnitude_diffs > magnitude_threshold) |
-        (azimuth_diffs > azimuth_threshold)
+        (magnitude_diffs < lower_magnitude_threshold) |
+        (magnitude_diffs > upper_magnitude_threshold) |
+        (azimuth_diffs < lower_azimuth_threshold) |
+        (azimuth_diffs > upper_azimuth_threshold)
     ]
 
     # Check if all data points are outliers
@@ -181,6 +191,9 @@ def combine_velocities(input_folder, combined_folder):
             group_df['U.adj'] = chosen_station['U.adj'].round(2)
             group_df['Corr'] = chosen_station['Corr'].round(3)
 
+            # Print df contents, median velocities, uncertainties and outliers in one print statement
+
+            print(f"Group: {group_df}\nMedian velocities: {median_velocities}\nUncertainties: {uncertainties}\nOutliers: {outliers}\n")
 
             # Merge the processed group_df back into the combined_df
             combined_df.loc[group] = group_df
